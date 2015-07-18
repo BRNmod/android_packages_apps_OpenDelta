@@ -58,14 +58,18 @@ import org.apache.http.params.HttpConnectionParams;
 import org.apache.http.params.HttpParams;
 import org.json.JSONException;
 
+import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
+import java.lang.IndexOutOfBoundsException;
 import java.lang.reflect.Method;
 import java.math.BigInteger;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -391,40 +395,48 @@ public class UpdateService
         notificationManager.cancel(NOTIFICATION_UPDATE);
     }
 
-    private byte[] downloadUrlMemory(String url) {
-        Logger.d("download: %s", url);
+    private byte[] downloadUrlMemory(String url_str) {
+        Logger.d("download: %s", url_str);
+
+        HttpURLConnection urlConnection = null;
+
         try {
-            HttpParams params = new BasicHttpParams();
-            HttpConnectionParams.setConnectionTimeout(params, 10000);
-            HttpConnectionParams.setSoTimeout(params, 10000);
-            HttpClient client = new DefaultHttpClient(params);
-            HttpGet request = new HttpGet(url);
-            HttpResponse response = client.execute(request);
-            int len = (int) response.getEntity().getContentLength();
+            URL url = new URL(url_str);
+            urlConnection = (HttpURLConnection) url.openConnection();
+            urlConnection.setConnectTimeout(10000);
+            urlConnection.setReadTimeout(10000);
+
+            int len = urlConnection.getContentLength();
             if ((len >= 0) && (len < 1024 * 1024)) {
                 byte[] ret = new byte[len];
-                InputStream in = response.getEntity().getContent();
+                InputStream in = new BufferedInputStream(urlConnection.getInputStream());
                 int pos = 0;
                 while (pos < len) {
                     int r = in.read(ret, pos, len - pos);
                     pos += r;
                     if (r <= 0)
-                        return null;
+                        throw new IndexOutOfBoundsException();
                 }
+
+                urlConnection.disconnect();
                 return ret;
             }
-            return null;
         } catch (Exception e) {
             // Download failed for any number of reasons, timeouts, connection
             // drops, etc. Just log it in debugging mode.
             Logger.ex(e);
-            return null;
         }
+        finally {
+            if(urlConnection != null)
+                urlConnection.disconnect();
+        }
+
+        return null;
     }
 
-    private boolean downloadUrlFile(String url, File f, String matchMD5,
+    private boolean downloadUrlFile(String url_str, File f, String matchMD5,
             DeltaInfo.ProgressListener progressListener) {
-        Logger.d("download: %s", url);
+        Logger.d("download: %s", url_str);
 
         MessageDigest digest = null;
         if (matchMD5 != null) {
@@ -438,19 +450,21 @@ public class UpdateService
 
         if (f.exists())
             f.delete();
+
+        HttpURLConnection urlConnection = null;
+
         try {
-            HttpParams params = new BasicHttpParams();
-            HttpConnectionParams.setConnectionTimeout(params, 10000);
-            HttpConnectionParams.setSoTimeout(params, 10000);
-            HttpClient client = new DefaultHttpClient(params);
-            HttpGet request = new HttpGet(url);
-            HttpResponse response = client.execute(request);
-            long len = (int) response.getEntity().getContentLength();
+            URL url = new URL(url_str);
+            urlConnection = (HttpURLConnection) url.openConnection();
+            urlConnection.setConnectTimeout(10000);
+            urlConnection.setReadTimeout(10000);
+
+            long len = urlConnection.getContentLength();
             long recv = 0;
             if ((len > 0) && (len < 4L * 1024L * 1024L * 1024L)) {
                 byte[] buffer = new byte[262144];
 
-                InputStream is = response.getEntity().getContent();
+                InputStream is = new BufferedInputStream(urlConnection.getInputStream());
                 FileOutputStream os = new FileOutputStream(f, false);
                 try {
                     int r;
@@ -465,6 +479,7 @@ public class UpdateService
                                     len);
                     }
                 } finally {
+                    urlConnection.disconnect();
                     os.close();
                 }
 
@@ -477,13 +492,17 @@ public class UpdateService
                 }
                 return true;
             }
-            return false;
         } catch (Exception e) {
             // Download failed for any number of reasons, timeouts, connection
             // drops, etc. Just log it in debugging mode.
             Logger.ex(e);
-            return false;
         }
+        finally {
+            if(urlConnection != null)
+                urlConnection.disconnect();
+        }
+
+        return false;
     }
 
     private DeltaInfo.ProgressListener getMD5Progress(String state, String filename) {
