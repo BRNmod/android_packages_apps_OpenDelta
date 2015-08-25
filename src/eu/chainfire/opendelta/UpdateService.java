@@ -40,6 +40,7 @@ import java.net.UnknownHostException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
@@ -877,7 +878,7 @@ OnWantUpdateCheckListener, OnSharedPreferenceChangeListener {
             updateState(STATE_ERROR_DOWNLOAD, null, null, null, url, null);
             return null;
         }
-        JSONObject object = null;
+        JSONObject object;
         try {
             object = new JSONObject(buildData);
 
@@ -885,18 +886,19 @@ OnWantUpdateCheckListener, OnSharedPreferenceChangeListener {
             List<String> buildNames = new ArrayList<String>();
             while (nextKey.hasNext()) {
                 String key = nextKey.next();
-                if (key.equals("./" + config.getDevice())) {
+                if (key.equals(config.getDevice())) {
                     JSONArray builds = object.getJSONArray(key);
                     for (int i = 0; i < builds.length(); i++) {
                         JSONObject build = builds.getJSONObject(i);
-                        String file = build.getString("filename");
-                        if (file.endsWith(".zip")) {
-                            buildNames.add(new File(file).getName());
+                        String filename = build.getString("filename");
+                        if (filename.endsWith(".zip")) {
+                            buildNames.add(filename);
                         }
                     }
                 }
             }
-            // assumed its always sorted
+            
+            Collections.sort(buildNames);
             if (buildNames.size() > 0) {
                 return buildNames.get(buildNames.size() - 1);
             }
